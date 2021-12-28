@@ -97,6 +97,18 @@ namespace MediaPlayback
             }
         }
 
+        public long Frame
+        {
+            get
+            {
+                return (long)(Position / (double)positionFactor * fps);
+            }
+            set
+            {
+                Position = (long)(value / (double)fps * positionFactor);
+            }
+        }
+
         public double Volume
         {
             set

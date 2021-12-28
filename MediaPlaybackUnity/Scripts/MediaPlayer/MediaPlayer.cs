@@ -26,6 +26,7 @@ namespace MediaPlayback
 
         private uint textureWidth = 0;
         private uint textureHeight = 0;
+        private uint fps = 0;
         private bool needToUpdateTexture = false;
 
         private IntPtr pluginInstance = IntPtr.Zero;
@@ -40,8 +41,12 @@ namespace MediaPlayback
         private bool loaded = false;
         private Plugin.MEDIA_DESCRIPTION currentMediaDescription = new Plugin.MEDIA_DESCRIPTION();
 
-        public MediaPlayer(string path, MonoBehaviour context)
+        private const uint positionFactor = 10000000;
+
+        public MediaPlayer(string path, uint fps, MonoBehaviour context)
         {
+            this.fps = fps;
+
             // create callback
             thisObject = GCHandle.Alloc(this, GCHandleType.Normal);
             IntPtr thisObjectPtr = GCHandle.ToIntPtr(thisObject);
@@ -58,12 +63,10 @@ namespace MediaPlayback
             else
                 Start(path);
 
-
             context.StartCoroutine(CallPluginAtEndOfFrames());
         }
 
-        ~MediaPlayer() =>
-            Release();
+        ~MediaPlayer() => Release();
 
         public void Update()
         {

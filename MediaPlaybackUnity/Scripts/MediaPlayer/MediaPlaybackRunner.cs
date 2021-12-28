@@ -18,16 +18,17 @@ public class MediaPlaybackRunner : MonoBehaviour
 
     public string mediaURI = string.Empty;
     public TextMeshProUGUI text;
-    public int instances = 1;
+    public uint fps;
+    public uint instances = 1;
 
     MediaPlayer[] players;
 
     void Start()
     {
         players = new MediaPlayer[instances];
-
+        
         for (int i = 0; i < instances; i++)
-            players[i] = new MediaPlayer(mediaURI, this);
+            players[i] = new MediaPlayer(mediaURI, fps, this);
     }
 
     void Update ()
@@ -36,7 +37,7 @@ public class MediaPlaybackRunner : MonoBehaviour
         {
             player.Update();
         }
-        text.text = players[0].Position.ToString();
+        text.text = players[0].Frame.ToString();
 	}
 
     private void OnRenderImage(RenderTexture source, RenderTexture destination)
