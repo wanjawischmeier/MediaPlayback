@@ -90,3 +90,6 @@ ipch/
 #*.exe
 #*.out
 #*.app
+
+LICENSE.meta
+README.md.meta
