@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace MediaPlayback
 {
-    public partial class MediaPlayer : MonoBehaviour
+    public partial class MediaPlayer
     {
         // state handling
         public delegate void PlaybackStateChangedHandler(object sender, ChangedEventArgs<PlaybackState> args);
@@ -40,7 +40,83 @@ namespace MediaPlayback
         private bool loaded = false;
         private Plugin.MEDIA_DESCRIPTION currentMediaDescription = new Plugin.MEDIA_DESCRIPTION();
 
-        public void Load(string uriOrPath)
+        public MediaPlayer(string path, MonoBehaviour context)
+        {
+            // create callback
+            thisObject = GCHandle.Alloc(this, GCHandleType.Normal);
+            IntPtr thisObjectPtr = GCHandle.ToIntPtr(thisObject);
+
+            // create media playback
+            CheckHR(Plugin.CreateMediaPlayback(stateCallback, thisObjectPtr, out pluginInstance));
+
+            Plugin.IsHardware4KDecodingSupported(pluginInstance, out hw4KDecodingSupported);
+
+            Debug.LogFormat("MediaPlayback has been created. Hardware decoding of 4K+ is {0}.", hw4KDecodingSupported ? "supported" : "not supported");
+
+            if (string.IsNullOrEmpty(path))
+                Debug.LogError("Invalid file path");
+            else
+                Start(path);
+
+
+            context.StartCoroutine(CallPluginAtEndOfFrames());
+        }
+
+        ~MediaPlayer() =>
+            Release();
+
+        public void Update()
+        {
+            if (needToUpdateTexture)
+            {
+                needToUpdateTexture = false;
+                UpdateTexture(currentMediaDescription.width, currentMediaDescription.height);
+            }
+            else
+            {
+                GL.IssuePluginEvent(Plugin.GetRenderEventFunc(), -1);
+            }
+        }
+
+        public void Release()
+        {
+            loaded = false;
+            if (pluginInstance != IntPtr.Zero)
+            {
+                if (currentState == PlaybackState.Playing)
+                {
+                    try
+                    {
+                        Stop();
+                    }
+                    catch { }
+                }
+                Plugin.ReleaseMediaPlayback(pluginInstance);
+                pluginInstance = IntPtr.Zero;
+            }
+
+            if (thisObject.Target != null)
+            {
+                try
+                {
+                    thisObject.Free();
+                }
+                catch { }
+            }
+
+            if (playbackTexture != null)
+            {
+                try
+                {
+                    UnityEngine.Object.Destroy(playbackTexture);
+                    playbackTexture = null;
+                }
+                catch { }
+            }
+        }
+
+
+        public void Start(string uriOrPath)
         {
             Stop();
 
@@ -60,6 +136,7 @@ namespace MediaPlayback
             }
 
             loaded = (0 == CheckHR(Plugin.LoadContent(pluginInstance, uriStr)));
+            Play();
         }
 
         public void Play()
@@ -170,77 +247,6 @@ namespace MediaPlayback
 
             }
 
-        }
-
-
-        private IEnumerator Start()
-        {
-            yield return StartCoroutine(CallPluginAtEndOfFrames());
-        }
-
-
-        private void Update()
-        {
-            if(needToUpdateTexture)
-            {
-                needToUpdateTexture = false;
-                UpdateTexture(currentMediaDescription.width, currentMediaDescription.height);
-            }
-            else
-            {
-                GL.IssuePluginEvent(Plugin.GetRenderEventFunc(), -1);
-            }
-        }
-
-        private void OnEnable()
-        {
-            // create callback
-            thisObject = GCHandle.Alloc(this, GCHandleType.Normal);
-            IntPtr thisObjectPtr = GCHandle.ToIntPtr(thisObject);
-
-            // create media playback
-            CheckHR(Plugin.CreateMediaPlayback(stateCallback, thisObjectPtr, out pluginInstance));
-
-            Plugin.IsHardware4KDecodingSupported(pluginInstance, out hw4KDecodingSupported);
-
-            Debug.LogFormat("MediaPlayback has been created. Hardware decoding of 4K+ is {0}.", hw4KDecodingSupported ? "supported" : "not supported");
-        }
-
-        private void OnDisable()
-        {
-            loaded = false;
-            if (pluginInstance != IntPtr.Zero)
-            {
-                if (currentState == PlaybackState.Playing)
-                {
-                    try
-                    {
-                        Stop();
-                    }
-                    catch { }
-                }
-                Plugin.ReleaseMediaPlayback(pluginInstance);
-                pluginInstance = IntPtr.Zero;
-            }
-
-            if (thisObject.Target != null)
-            {
-                try
-                {
-                    thisObject.Free();
-                }
-                catch { }
-            }
-
-            if (playbackTexture != null)
-            {
-                try
-                {
-                    UnityEngine.Object.Destroy(playbackTexture);
-                    playbackTexture = null;
-                }
-                catch { }
-            }
         }
 
         [AOT.MonoPInvokeCallback(typeof(Plugin.StateChangedCallback))]

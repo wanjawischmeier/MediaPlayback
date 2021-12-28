@@ -17,39 +17,38 @@ public class MediaPlaybackRunner : MonoBehaviour
 {
 
     public string mediaURI = string.Empty;
-    public bool playing = true;
     public TextMeshProUGUI text;
-    public Material material;
+    public int instances = 1;
 
-    MediaPlayer player;
-
-    private void Awake()
-    {
-        player = GetComponent<MediaPlayer>();
-    }
+    MediaPlayer[] players;
 
     void Start()
     {
-        if (!string.IsNullOrEmpty(mediaURI))
-        {
-            player.Load(mediaURI);
-            player.Play();
-            player.TextureUpdated += Player_TextureUpdated;
-        }
+        players = new MediaPlayer[instances];
+
+        for (int i = 0; i < instances; i++)
+            players[i] = new MediaPlayer(mediaURI, this);
     }
 
     void Update ()
     {
-        text.text = player.Position.ToString();
+        foreach (var player in players)
+        {
+            player.Update();
+        }
+        text.text = players[0].Position.ToString();
 	}
 
     private void OnRenderImage(RenderTexture source, RenderTexture destination)
     {
-        Graphics.Blit(player.playbackTexture, destination);
+        Graphics.Blit(players[0].playbackTexture == null ? source : players[0].playbackTexture, destination);
     }
 
-    private void Player_TextureUpdated(object sender, Texture2D newVideoTexture)
+    private void OnDisable()
     {
-
+        foreach (var player in players)
+        {
+            player.Release();
+        }
     }
 }
