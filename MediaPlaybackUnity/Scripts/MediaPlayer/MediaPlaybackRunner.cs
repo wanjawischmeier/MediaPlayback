@@ -9,67 +9,47 @@
 //
 //*********************************************************
 
-using System;
-using System.IO;
 using UnityEngine;
 using TMPro;
+using MediaPlayback;
 
-[RequireComponent(typeof(MediaPlayer.Playback))]
-public class MediaPlaybackRunner : MonoBehaviour {
+public class MediaPlaybackRunner : MonoBehaviour
+{
 
     public string mediaURI = string.Empty;
     public bool playing = true;
     public TextMeshProUGUI text;
+    public Material material;
 
-    MediaPlayer.Playback _player;
+    MediaPlayer player;
 
     private void Awake()
     {
-        _player = GetComponent<MediaPlayer.Playback>();
+        player = GetComponent<MediaPlayer>();
     }
 
     void Start()
     {
         if (!string.IsNullOrEmpty(mediaURI))
         {
-            string uriStr = mediaURI;
-
-            if (Uri.IsWellFormedUriString(mediaURI, UriKind.Absolute))
-            {
-                uriStr = mediaURI;
-            }
-            else if (Path.IsPathRooted(mediaURI))
-            {
-                uriStr = "file:///" + mediaURI;
-            }
-            else
-            {
-                uriStr = "file:///" + Path.Combine(Application.streamingAssetsPath, mediaURI);
-            }
-
-            _player.Load(uriStr);
+            player.Load(mediaURI);
+            player.Play();
+            player.TextureUpdated += Player_TextureUpdated;
         }
     }
 
     void Update ()
     {
-        text.text = _player.GetPosition().ToString();
-
-        if (playing)
-        {
-            if (_player.State == MediaPlayer.PlaybackState.Paused)
-            {
-                _player.Play();
-                Debug.Log("continued");
-            }
-        }
-        else
-        {
-            if (_player.State == MediaPlayer.PlaybackState.Playing)
-            {
-                _player.Pause();
-                Debug.Log("paused");
-            }
-        }
+        text.text = player.Position.ToString();
 	}
+
+    private void OnRenderImage(RenderTexture source, RenderTexture destination)
+    {
+        Graphics.Blit(player.playbackTexture, destination);
+    }
+
+    private void Player_TextureUpdated(object sender, Texture2D newVideoTexture)
+    {
+
+    }
 }

@@ -1,47 +1,11 @@
-﻿//*********************************************************
-//
-// Copyright (c) Microsoft. All rights reserved.
-// This code is licensed under the MIT License (MIT).
-// THIS CODE IS PROVIDED *AS IS* WITHOUT WARRANTY OF
-// ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING ANY
-// IMPLIED WARRANTIES OF FITNESS FOR A PARTICULAR
-// PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT.
-//
-//*********************************************************
-
-using System;
+﻿using System;
 using System.Collections;
 using System.Runtime.InteropServices;
-using System.Text;
 using UnityEngine;
 
-namespace MediaPlayer
+namespace MediaPlayback
 {
-    public enum PlaybackState
-    {
-        None = 0,
-        Opening,
-        Buffering,
-        Playing,
-        Paused,
-        Ended,
-        NA = 255
-    };
-
-    public class ChangedEventArgs<T>
-    {
-        public T PreviousState;
-        public T CurrentState;
-
-        public ChangedEventArgs(T previousState, T currentState)
-        {
-            PreviousState = previousState;
-            CurrentState = currentState;
-        }
-    }
-
-
-    public class Playback : MonoBehaviour
+    public partial class MediaPlayer : MonoBehaviour
     {
         // state handling
         public delegate void PlaybackStateChangedHandler(object sender, ChangedEventArgs<PlaybackState> args);
@@ -52,80 +16,16 @@ namespace MediaPlayer
         public event PlaybackFailedHandler PlaybackFailed;
         public event TextureUpdatedHandler TextureUpdated;
 
-        [Tooltip("Renderer component to the object the frame will be rendered to")]
+        // Renderer component to the object the frame will be rendered to
         public Material targetMaterial;
 
-        [Tooltip("Texture to update on the Target Renderer (must be material's shader variable name)")]
+        // Texture to update on the Target Renderer (must be material's shader variable name)
         public string targetRendererTextureName = "_MainTex";
 
-        public bool Hardware4KDecodingSupported
-        {
-            get
-            {
-                return hw4KDecodingSupported;
-            }
-        }
-
-        // texture size
-        public uint CurrentPlaybackTextureWidth
-        {
-            get
-            {
-                return textureWidth;
-            }
-        }
-        public uint CurrentPlaybackTextureHeight
-        {
-            get
-            {
-                return textureHeight;
-            }
-        }
-
-        public Texture2D CurrentVideoTexture
-        {
-            get
-            {
-                return playbackTexture;
-            }
-        }
-
-
-        public PlaybackState State
-        {
-            get { return currentState; }
-            private set
-            {
-                if (currentState != value)
-                {
-                    previousState = currentState;
-                    currentState = value;
-                    var args = new ChangedEventArgs<PlaybackState>(previousState, currentState);
-                    
-#if UNITY_WSA_10_0
-                    if (!UnityEngine.WSA.Application.RunningOnAppThread())
-                    {
-                        UnityEngine.WSA.Application.InvokeOnAppThread(() =>
-                        {
-                            TriggerPlaybackStateChangedEvent(args);
-
-                        }, false);
-                    }
-                    else
-                    {
-                        TriggerPlaybackStateChangedEvent(args);
-                    }
-#else
-                    TriggerPlaybackStateChangedEvent(args);
-#endif
-                }
-            }
-        }
-
+        public Texture2D playbackTexture = null;
 
         private uint textureWidth = 0;
         private uint textureHeight = 0;
-        private Texture2D playbackTexture = null;
         private bool needToUpdateTexture = false;
 
         private IntPtr pluginInstance = IntPtr.Zero;
@@ -196,7 +96,7 @@ namespace MediaPlayer
                     dummyTex.LoadRawTextureData(dummyData);
                     dummyTex.Apply();
                     Graphics.CopyTexture(dummyTex, playbackTexture);
-                    Destroy(dummyTex);
+                    UnityEngine.Object.Destroy(dummyTex);
                 }
                 catch { }
             }
@@ -243,13 +143,27 @@ namespace MediaPlayer
                     }
                 }
 
-                SendTextureUpdated();
+#if UNITY_WSA_10_0
+                if (!UnityEngine.WSA.Application.RunningOnAppThread())
+                {
+                    UnityEngine.WSA.Application.InvokeOnAppThread(() =>
+                    {
+                        TextureUpdated(this, playbackTexture);
+                    }, true);
+                }
+                else
+                {
+                    TextureUpdated(this, playbackTexture);
+                }
+#else
+                TextureUpdated?.Invoke(this, playbackTexture);
+#endif
 
                 if (oldTexture != null)
                 {
                     try
                     {
-                        Destroy(oldTexture);
+                        UnityEngine.Object.Destroy(oldTexture);
                     }
                     catch { }
                 }
@@ -259,54 +173,9 @@ namespace MediaPlayer
         }
 
 
-        public long GetDuration()
+        private IEnumerator Start()
         {
-            long duration = 0;
-            long position = 0;
-
-            CheckHR(Plugin.GetDurationAndPosition(pluginInstance, ref duration, ref position));
-            return duration;
-        }
-
-
-        public long GetPosition()
-        {
-            long duration = 0;
-            long position = 0;
-
-            CheckHR(Plugin.GetDurationAndPosition(pluginInstance, ref duration, ref position));
-            return position;
-        }
-
-        public void Seek(long position)
-        {
-            CheckHR(Plugin.Seek(pluginInstance, position));
-        }
-
-        public void SetVolume(float volume)
-        {
-            CheckHR(Plugin.SetVolume(pluginInstance, volume));
-        }
-
-
-        public uint GetVideoWidth()
-        {
-            return currentMediaDescription.width;
-        }
-
-        public uint GetVideoHeight()
-        {
-            return currentMediaDescription.height;
-        }
-
-        public bool IsReady()
-        {
-            return loaded;
-        }
-
-        IEnumerator Start()
-        {
-            yield return StartCoroutine("CallPluginAtEndOfFrames");
+            yield return StartCoroutine(CallPluginAtEndOfFrames());
         }
 
 
@@ -321,27 +190,6 @@ namespace MediaPlayer
             {
                 GL.IssuePluginEvent(Plugin.GetRenderEventFunc(), -1);
             }
-        }
-
-
-        private void SendTextureUpdated()
-        {
-
-#if UNITY_WSA_10_0
-                if (!UnityEngine.WSA.Application.RunningOnAppThread())
-                {
-                    UnityEngine.WSA.Application.InvokeOnAppThread(() =>
-                    {
-                        TextureUpdated(this, playbackTexture);
-                    }, true);
-                }
-                else
-                {
-                    TextureUpdated(this, playbackTexture);
-                }
-#else
-            TextureUpdated?.Invoke(this, playbackTexture);
-#endif
         }
 
         private void OnEnable()
@@ -388,7 +236,7 @@ namespace MediaPlayer
             {
                 try
                 {
-                    Destroy(playbackTexture);
+                    UnityEngine.Object.Destroy(playbackTexture);
                     playbackTexture = null;
                 }
                 catch { }
@@ -405,7 +253,7 @@ namespace MediaPlayer
             }
 
             var handle = GCHandle.FromIntPtr(thisObjectPtr);
-            Playback thisObject = handle.Target as Playback;
+            MediaPlayer thisObject = handle.Target as MediaPlayer;
             if (thisObject == null)
             {
                 Debug.LogError("MediaPlayback_Changed: thisObjectPtr is not null, but seems invalid.");
@@ -517,6 +365,7 @@ namespace MediaPlayer
                     break;
             }
         }
+
         private IEnumerator CallPluginAtEndOfFrames()
         {
             while (true)
@@ -542,111 +391,6 @@ namespace MediaPlayer
                 Debug.Log("Media Failed: HRESULT = 0x" + hresult.ToString("X", System.Globalization.NumberFormatInfo.InvariantInfo));
             }
             return hresult;
-        }
-
-        private static class Plugin
-        {
-            public enum StateType
-            {
-                StateType_None = 0,
-                StateType_Opened,
-                StateType_StateChanged,
-                StateType_Failed,
-                StateType_NewFrameTexture,
-                StateType_GraphicsDeviceShutdown,
-                StateType_GraphicsDeviceReady
-            };
-
-            [StructLayout(LayoutKind.Sequential, Pack = 8)]
-            public struct MEDIA_DESCRIPTION
-            {
-                public UInt32 width;
-                public UInt32 height;
-                public Int64 duration;
-                public byte isSeekable;
-
-                public override string ToString()
-                {
-                    StringBuilder sb = new StringBuilder();
-                    sb.AppendLine("width: " + width);
-                    sb.AppendLine("height: " + height);
-                    sb.AppendLine("duration: " + duration);
-                    sb.AppendLine("canSeek: " + isSeekable);
-
-                    return sb.ToString();
-                }
-            };
-
-            [StructLayout(LayoutKind.Sequential, Pack = 8)]
-            public struct PLAYBACK_STATE
-            {
-                public UInt32 type;
-                public UInt32 state;
-                public Int64 hresult;
-                public MEDIA_DESCRIPTION description;
-            };
-
-            public delegate void StateChangedCallback(IntPtr thisObjectPtr, PLAYBACK_STATE args);
-            public delegate void SubtitleItemEnteredCallback(IntPtr thisObjectPtr,  [MarshalAs(UnmanagedType.LPWStr)] string subtitleTrackId, 
-                                                                                    [MarshalAs(UnmanagedType.LPWStr)] string textCueId, 
-                                                                                    [MarshalAs(UnmanagedType.LPWStr)] string language,
-                                                                                    IntPtr textLinesPtr, 
-                                                                                    uint linesCount);
-            public delegate void SubtitleItemExitedCallback(IntPtr thisObjectPtr, IntPtr subtitleTrackId, IntPtr textCueId);
-
-            [DllImport("MediaPlayback", CallingConvention = CallingConvention.StdCall, EntryPoint = "CreateMediaPlayback")]
-            internal static extern long CreateMediaPlayback(StateChangedCallback callback, IntPtr playbackObject, out IntPtr pluginInstance);
-
-            [DllImport("MediaPlayback", CallingConvention = CallingConvention.StdCall, EntryPoint = "ReleaseMediaPlayback")]
-            internal static extern void ReleaseMediaPlayback(IntPtr pluginInstance);
-
-            [DllImport("MediaPlayback", CallingConvention = CallingConvention.StdCall, EntryPoint = "LoadContent")]
-            internal static extern long LoadContent(IntPtr pluginInstance, [MarshalAs(UnmanagedType.LPWStr)] string sourceURL);
-
-            [DllImport("MediaPlayback", CallingConvention = CallingConvention.StdCall, EntryPoint = "Play")]
-            internal static extern long Play(IntPtr pluginInstance);
-
-            [DllImport("MediaPlayback", CallingConvention = CallingConvention.StdCall, EntryPoint = "Pause")]
-            internal static extern long Pause(IntPtr pluginInstance);
-
-            [DllImport("MediaPlayback", CallingConvention = CallingConvention.StdCall, EntryPoint = "Stop")]
-            internal static extern long Stop(IntPtr pluginInstance);
-
-            [DllImport("MediaPlayback", CallingConvention = CallingConvention.StdCall, EntryPoint = "GetPlaybackTexture")]
-            internal static extern long GetPlaybackTexture(IntPtr pluginInstance, out IntPtr playbackTexture, out byte isStereoscopic);
-
-            [DllImport("MediaPlayback", CallingConvention = CallingConvention.StdCall, EntryPoint = "GetDurationAndPosition")]
-            internal static extern long GetDurationAndPosition(IntPtr pluginInstance, ref long duration, ref long position);
-
-            [DllImport("MediaPlayback", CallingConvention = CallingConvention.StdCall, EntryPoint = "Seek")]
-            internal static extern long Seek(IntPtr pluginInstance, long position);
-
-            [DllImport("MediaPlayback", CallingConvention = CallingConvention.StdCall, EntryPoint = "SetVolume")]
-            internal static extern long SetVolume(IntPtr pluginInstance, double volume);
-
-            [DllImport("MediaPlayback", CallingConvention = CallingConvention.StdCall, EntryPoint = "IsHardware4KDecodingSupported")]
-            internal static extern long IsHardware4KDecodingSupported(IntPtr pluginInstance, out bool hwDecoding4KSupported);
-
-            [DllImport("MediaPlayback", CallingConvention = CallingConvention.StdCall, EntryPoint = "GetMediaPlayer")]
-            internal static extern long GetMediaPlayer(IntPtr pluginInstance, out IntPtr ppvUnknown);
-
-
-            [DllImport("MediaPlayback", CallingConvention = CallingConvention.StdCall, EntryPoint = "SetSubtitlesCallbacks")]
-            internal static extern long SetSubtitlesCallbacks(IntPtr pluginInstance, SubtitleItemEnteredCallback enteredCallback, SubtitleItemExitedCallback exitedCallback);
-
-            [DllImport("MediaPlayback", CallingConvention = CallingConvention.StdCall, EntryPoint = "GetSubtitlesTracksCount")]
-            internal static extern long GetSubtitlesTracksCount(IntPtr pluginInstance, [Out] out uint count);
-
-            [DllImport("MediaPlayback", CallingConvention = CallingConvention.StdCall, EntryPoint = "GetSubtitlesTrack")]
-            internal static extern long GetSubtitlesTrack(IntPtr pluginInstance, uint index, out IntPtr trackId, out IntPtr trackLabel, out IntPtr trackLanuguage);
-
-
-            // Unity plugin
-            [DllImport("MediaPlayback", CallingConvention = CallingConvention.StdCall, EntryPoint = "SetTimeFromUnity")]
-            internal static extern void SetTimeFromUnity(float t);
-
-            [DllImport("MediaPlayback", CallingConvention = CallingConvention.StdCall, EntryPoint = "GetRenderEventFunc")]
-            internal static extern IntPtr GetRenderEventFunc();
         }
     }
 }
