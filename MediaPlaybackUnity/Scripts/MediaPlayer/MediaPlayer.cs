@@ -11,10 +11,12 @@ namespace MediaPlayback
         public delegate void PlaybackStateChangedHandler(object sender, ChangedEventArgs<PlaybackState> args);
         public delegate void PlaybackFailedHandler (object sender, long hresult);
         public delegate void TextureUpdatedHandler(object sender, Texture2D newVideoTexture);
+        public delegate void FrameRenderedHandler(object sender, Texture2D texture);
 
         public event PlaybackStateChangedHandler PlaybackStateChanged;
         public event PlaybackFailedHandler PlaybackFailed;
         public event TextureUpdatedHandler TextureUpdated;
+        public event FrameRenderedHandler FrameRendered;
 
         // Renderer component to the object the frame will be rendered to
         public Material targetMaterial;
@@ -66,8 +68,6 @@ namespace MediaPlayback
             context.StartCoroutine(CallPluginAtEndOfFrames());
         }
 
-        ~MediaPlayer() => Release();
-
         public void Update()
         {
             if (needToUpdateTexture)
@@ -77,7 +77,7 @@ namespace MediaPlayback
             }
             else
             {
-                GL.IssuePluginEvent(Plugin.GetRenderEventFunc(), -1);
+                // GL.IssuePluginEvent(Plugin.GetRenderEventFunc(), -1);
             }
         }
 
@@ -379,6 +379,8 @@ namespace MediaPlayback
         {
             while (true)
             {
+                FrameRendered?.Invoke(this, playbackTexture);
+
                 // Wait until all frame rendering is done
                 yield return new WaitForEndOfFrame();
 
